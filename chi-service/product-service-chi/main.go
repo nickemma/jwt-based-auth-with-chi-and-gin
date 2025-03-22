@@ -3,8 +3,11 @@ package product_service_chi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/jwtauth/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -23,8 +26,15 @@ type Product struct {
 
 func main() {
 	connStr := "postgres://user:pass@localhost:5432/product_db"
-	poolConfig, _ := pgxpool.ParseConfig(connStr)
-	dbPool, _ = pgxpool.New(context.Background(), poolConfig.Config.ConnString())
+	poolConfig, err := pgxpool.ParseConfig(connStr)
+	if err != nil {
+		panic(fmt.Sprintf("Unable to parse config: %v", err))
+	}
+
+	dbPool, err = pgxpool.NewWithConfig(context.Background(), poolConfig)
+	if err != nil {
+		panic(fmt.Sprintf("Unable to create connection pool: %v", err))
+	}
 
 	r := chi.NewRouter()
 
@@ -34,13 +44,24 @@ func main() {
 	// Admin protected routes
 	r.Group(func(r chi.Router) {
 		r.Use(jwtauth.Verifier(tokenAuth))
-		r.Use(jwtauth.Authenticator)
+		r.Use(jwtauth.Authenticator(tokenAuth))
 		r.Use(adminOnly)
 
 		r.Post("/products", createProductHandler)
 	})
 
 	http.ListenAndServe(":3001", r)
+}
+
+func adminOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, claims, _ := jwtauth.FromContext(r.Context())
+		if claims["role"] != "admin" {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func createProductHandler(w http.ResponseWriter, r *http.Request) {

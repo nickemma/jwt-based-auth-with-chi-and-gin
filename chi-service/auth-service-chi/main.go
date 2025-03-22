@@ -2,9 +2,13 @@ package auth_service_chi
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/jwtauth/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -29,9 +33,16 @@ func main() {
 	tokenAuth = jwtauth.New("HS256", []byte(jwtSecret), nil)
 
 	// Database setup
-	connStr := "postgres://user:pass@localhost:5432/auth_db"
-	poolConfig, _ := pgxpool.ParseConfig(connStr)
-	dbPool, _ = pgxpool.New(context.Background(), poolConfig.Config.ConnString())
+	connStr := "postgres://user:pass@localhost:5432/product_db"
+	poolConfig, err := pgxpool.ParseConfig(connStr)
+	if err != nil {
+		panic(fmt.Sprintf("Unable to parse config: %v", err))
+	}
+
+	dbPool, err = pgxpool.NewWithConfig(context.Background(), poolConfig)
+	if err != nil {
+		panic(fmt.Sprintf("Unable to create connection pool: %v", err))
+	}
 
 	r := chi.NewRouter()
 
@@ -43,7 +54,7 @@ func main() {
 	// Protected routes
 	r.Group(func(r chi.Router) {
 		r.Use(jwtauth.Verifier(tokenAuth))
-		r.Use(jwtauth.Authenticator)
+		r.Use(jwtauth.Authenticator(tokenAuth))
 
 		r.Get("/user", getUserHandler)
 	})
@@ -51,7 +62,7 @@ func main() {
 	// Admin routes
 	r.Group(func(r chi.Router) {
 		r.Use(jwtauth.Verifier(tokenAuth))
-		r.Use(jwtauth.Authenticator)
+		r.Use(jwtauth.Authenticator(tokenAuth))
 		r.Use(adminOnly)
 
 		// Add admin-specific routes here

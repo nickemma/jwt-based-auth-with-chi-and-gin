@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -29,8 +30,15 @@ type User struct {
 func main() {
 	// Database setup
 	connStr := "postgres://user:pass@localhost:5432/auth_db"
-	poolConfig, _ := pgxpool.ParseConfig(connStr)
-	dbPool, _ = pgxpool.New(context.Background(), poolConfig.Config.ConnString())
+	poolConfig, err := pgxpool.ParseConfig(connStr)
+	if err != nil {
+		panic(fmt.Sprintf("Unable to parse config: %v", err))
+	}
+
+	dbPool, err = pgxpool.NewWithConfig(context.Background(), poolConfig)
+	if err != nil {
+		panic(fmt.Sprintf("Unable to create connection pool: %v", err))
+	}
 
 	r := gin.Default()
 
@@ -188,7 +196,7 @@ func JWTMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		token, _ := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 			}
